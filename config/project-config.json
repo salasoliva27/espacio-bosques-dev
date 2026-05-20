@@ -100,6 +100,14 @@
       "telemetryRetentionDays": 90,
       "alertChannels": ["email", "webhook"],
       "criticalAlertThreshold": "high"
+    },
+    "realityCheck": {
+      "enabled": true,
+      "deltaThreshold": 0.25,
+      "lowConfidenceThreshold": 0.5,
+      "expertQuorum": 2,
+      "expertPanelSize": 3,
+      "scopeGapCategories": ["permits", "insurance", "maintenance", "iva_retencion", "contingency"]
     }
   },
   "ipfs": {

@@ -99,12 +99,17 @@ Backend:
 - ✅ Investment route (replaces MetaMask flow)
 - ✅ Supabase auth middleware
 - ✅ Simulation mode config
+- ✅ Reality Check pre-funding gate (Phase 1, sim-only): see `backend/src/ai/reality_check.ts`,
+  `backend/src/routes/realityCheck.ts`. Toggle: `REALITY_CHECK_ENABLED` env var (defaults true under sim mode).
+  Spec: `janus-ia/dump/espacio-bosques-reality-check-spec.md`. Production DB: `database/migrations/002_reality_check.sql`.
 
 Frontend:
 - ✅ Dashboard, project detail, create project, AI reports
 - ✅ SimulationBanner component
 - ✅ AuthScreen (email/PIN + Google, no MetaMask)
 - ✅ InvestModal (MXN amount → Bitso quote → confirm → tx hash)
+- ✅ RealityCheckPanel — rendered on ProjectDetail; surfaces Layer 1 results,
+  delta vs. market range, justify-or-adjust UX for the proposer
 - ⬜ Remove all remaining web3/MetaMask references
 
 ---

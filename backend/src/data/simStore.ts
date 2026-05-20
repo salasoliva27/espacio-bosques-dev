@@ -104,6 +104,13 @@ function loadPersistedData(): void {
         userBalances.set(userId, Number(balance));
       }
     }
+
+    // Restore reality checks (one per projectId, keyed by projectId)
+    if (data.realityChecks && typeof data.realityChecks === 'object') {
+      for (const [projectId, check] of Object.entries(data.realityChecks as Record<string, SimRealityCheck>)) {
+        realityCheckStore.set(projectId, check);
+      }
+    }
   } catch {
     // Ignore load errors — start fresh
   }
@@ -125,11 +132,16 @@ export function persistData(): void {
     userBalances.forEach((balance, userId) => {
       balancesObj[userId] = balance;
     });
+    const realityChecksObj: Record<string, SimRealityCheck> = {};
+    realityCheckStore.forEach((check, projectId) => {
+      realityChecksObj[projectId] = check;
+    });
     fs.writeFileSync(DATA_FILE, JSON.stringify({
       projects: userCreatedProjects,
       comments: commentsObj,
       providerProfiles: providerProfilesObj,
       balances: balancesObj,
+      realityChecks: realityChecksObj,
     }, null, 2), 'utf8');
   } catch {
     // Ignore write errors
@@ -370,6 +382,94 @@ export function getSimStats(): {
     fundedMxn,
     milestones,
   };
+}
+
+// ── Reality Check ─────────────────────────────────────────────────────
+/**
+ * Pre-funding "Reality Check" gate. A project that has been drafted by
+ * the user (with AI assistance) is run through a market-rate sanity check
+ * before it can transition to PENDING / open-for-funding.
+ *
+ * State machine (lives on SimProject.status):
+ *   REALITY_CHECK_PENDING   → Layer 1 (AI market-rate pass) running or queued
+ *   REALITY_CHECK_ADJUST    → Layer 2 — proposer must accept the adjusted
+ *                             number or attach a justification for the delta
+ *   PENDING                 → passed Reality Check, open for funding
+ *   (REALITY_CHECK_EXPERT is reserved for the Layer-3 community-expert
+ *    escalation; not implemented in this PR — deferred to a follow-up.)
+ */
+
+export type RealityCheckState =
+  | 'pending'        // Layer 1 in progress or queued
+  | 'pass'           // passed; project can move to PENDING
+  | 'adjust_required'; // delta exceeds threshold; proposer must act
+
+export type RealityCheckScopeGap =
+  | 'permits'
+  | 'insurance'
+  | 'maintenance'
+  | 'iva_retencion'
+  | 'contingency'
+  | 'other';
+
+export interface RealityCheckItem {
+  id: string;
+  realityCheckId: string;
+  milestoneTitle?: string;
+  lineLabel: string;
+  proposerEstimateMxn: number;
+  benchmarkLowMxn: number | null;
+  benchmarkHighMxn: number | null;
+  benchmarkMidpointMxn: number | null;
+  finalAmountMxn: number;
+  deltaPct: number | null;
+  confidence: number;
+  sources: { url: string; title: string; snippet: string; priceObserved: number | null }[];
+  proposerJustification: string | null;
+  proposerEvidenceUrls: string[];
+  flaggedMissing: boolean;
+  missingCategory: RealityCheckScopeGap | null;
+}
+
+export interface SimRealityCheck {
+  id: string;
+  projectId: string;
+  revision: number;
+  state: RealityCheckState;
+  layer1CompletedAt: string | null;
+  layer1Confidence: number | null;
+  layer1Model: string | null;
+  layer1RawResponse: unknown | null;
+  proposerTotalMxn: number;
+  finalTotalMxn: number;
+  benchmarkTotalLowMxn: number;
+  benchmarkTotalHighMxn: number;
+  items: RealityCheckItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+const realityCheckStore = new Map<string, SimRealityCheck>(); // keyed by projectId — only latest revision
+
+export function getRealityCheck(projectId: string): SimRealityCheck | null {
+  return realityCheckStore.get(projectId) ?? null;
+}
+
+export function putRealityCheck(check: SimRealityCheck): SimRealityCheck {
+  check.updatedAt = new Date().toISOString();
+  realityCheckStore.set(check.projectId, check);
+  persistData();
+  return check;
+}
+
+export function deleteRealityCheck(projectId: string): boolean {
+  const ok = realityCheckStore.delete(projectId);
+  if (ok) persistData();
+  return ok;
+}
+
+export function listRealityChecks(): SimRealityCheck[] {
+  return Array.from(realityCheckStore.values());
 }
 
 // ── Init ──────────────────────────────────────────────────────────────

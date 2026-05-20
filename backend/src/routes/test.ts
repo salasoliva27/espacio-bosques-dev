@@ -12,7 +12,8 @@
 import { Router, Request, Response } from 'express';
 import { DEMO_PROJECTS, addSimInvestment, addSimProject, getSimUserInvestments, addSimBalance, getSimBalance,
          getProviderUserProfile, upsertProviderUserProfile, addProviderService, updateProviderService, deleteProviderService,
-         ProviderService, resetSimFull } from '../data/simStore';
+         ProviderService, resetSimFull,
+         getRealityCheck, putRealityCheck, deleteRealityCheck, listRealityChecks, SimRealityCheck, RealityCheckItem } from '../data/simStore';
 import { SIM_PROVIDERS, updateProviderStatus } from '../data/providers';
 import { SIM_PROPOSALS, SIM_VOTES, SIM_TRANSACTIONS, addProposal, updateProposal, castVote, setVotingWindow, resetGovernance, addInvestmentEvent,
   addCostItem, addEvidenceDoc, addCompletionRequest, castEvidenceVote, getCompletionRequestsForProject, createNotification,
@@ -434,6 +435,128 @@ router.post('/project/seed', (_req: Request, res: Response) => {
 
   const p = DEMO_PROJECTS.find(p => p.id === 'demo-project-001')!;
   res.json({ ok: true, project: { id: p.id, title: p.title }, seeded: true });
+});
+
+/* ── GET /api/test/reality-check ───────────────────────────────── */
+router.get('/reality-check', (_req: Request, res: Response) => {
+  res.json({
+    note: 'Reality Check test helpers — simulation mode only',
+    checks: listRealityChecks(),
+    endpoints: [
+      'GET /api/test/reality-check                              dump all stored checks',
+      'POST /api/test/reality-check/seed-pass {projectId}       create a synthetic pass-state check',
+      'POST /api/test/reality-check/seed-adjust {projectId}     create a synthetic adjust-required check',
+      'POST /api/test/reality-check/wipe {projectId}            remove a stored check',
+    ],
+  });
+});
+
+/* ── POST /api/test/reality-check/seed-pass ────────────────────── */
+// Bypasses the LLM call and seeds a "passed" Reality Check so the rest of
+// the flow can be exercised without burning Anthropic tokens.
+router.post('/reality-check/seed-pass', (req: Request, res: Response) => {
+  const projectId: string = req.body.projectId ?? DEMO_PROJECTS[0]?.id;
+  const project = DEMO_PROJECTS.find((p) => p.id === projectId);
+  if (!project) return res.status(404).json({ error: `Project not found: ${projectId}` });
+
+  const items: RealityCheckItem[] = [
+    {
+      id: `rci-${Date.now()}-a`,
+      realityCheckId: `rc-${Date.now()}`,
+      milestoneTitle: project.milestones[0]?.title,
+      lineLabel: 'Equipment + installation',
+      proposerEstimateMxn: 80000,
+      benchmarkLowMxn: 75000,
+      benchmarkHighMxn: 90000,
+      benchmarkMidpointMxn: 82500,
+      finalAmountMxn: 80000,
+      deltaPct: -3.03,
+      confidence: 0.85,
+      sources: [],
+      proposerJustification: null,
+      proposerEvidenceUrls: [],
+      flaggedMissing: false,
+      missingCategory: null,
+    },
+  ];
+  const check: SimRealityCheck = {
+    id: `rc-${Date.now()}`,
+    projectId,
+    revision: 1,
+    state: 'pass',
+    layer1CompletedAt: new Date().toISOString(),
+    layer1Confidence: 0.85,
+    layer1Model: 'test-harness-seed',
+    layer1RawResponse: { seeded: true },
+    proposerTotalMxn: 80000,
+    finalTotalMxn: 80000,
+    benchmarkTotalLowMxn: 75000,
+    benchmarkTotalHighMxn: 90000,
+    items,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  putRealityCheck(check);
+  project.status = 'PENDING';
+  res.json({ ok: true, check, projectStatus: project.status });
+});
+
+/* ── POST /api/test/reality-check/seed-adjust ──────────────────── */
+router.post('/reality-check/seed-adjust', (req: Request, res: Response) => {
+  const projectId: string = req.body.projectId ?? DEMO_PROJECTS[0]?.id;
+  const project = DEMO_PROJECTS.find((p) => p.id === projectId);
+  if (!project) return res.status(404).json({ error: `Project not found: ${projectId}` });
+
+  const items: RealityCheckItem[] = [
+    {
+      id: `rci-${Date.now()}-a`,
+      realityCheckId: `rc-${Date.now()}`,
+      milestoneTitle: project.milestones[0]?.title,
+      lineLabel: '12 PoE security cameras (proposer says MXN 180k)',
+      proposerEstimateMxn: 180000,
+      benchmarkLowMxn: 96000,
+      benchmarkHighMxn: 120000,
+      benchmarkMidpointMxn: 108000,
+      finalAmountMxn: 180000,
+      deltaPct: 66.67,
+      confidence: 0.78,
+      sources: [],
+      proposerJustification: null,
+      proposerEvidenceUrls: [],
+      flaggedMissing: false,
+      missingCategory: null,
+    },
+  ];
+  const check: SimRealityCheck = {
+    id: `rc-${Date.now()}`,
+    projectId,
+    revision: 1,
+    state: 'adjust_required',
+    layer1CompletedAt: new Date().toISOString(),
+    layer1Confidence: 0.78,
+    layer1Model: 'test-harness-seed',
+    layer1RawResponse: { seeded: true },
+    proposerTotalMxn: 180000,
+    finalTotalMxn: 180000,
+    benchmarkTotalLowMxn: 96000,
+    benchmarkTotalHighMxn: 120000,
+    items,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  putRealityCheck(check);
+  project.status = 'REALITY_CHECK_ADJUST';
+  res.json({ ok: true, check, projectStatus: project.status });
+});
+
+/* ── POST /api/test/reality-check/wipe ─────────────────────────── */
+router.post('/reality-check/wipe', (req: Request, res: Response) => {
+  const projectId: string = req.body.projectId ?? DEMO_PROJECTS[0]?.id;
+  if (getRealityCheck(projectId)) {
+    deleteRealityCheck(projectId);
+    return res.json({ ok: true, wiped: projectId });
+  }
+  res.json({ ok: false, error: `No check stored for ${projectId}` });
 });
 
 /* ── POST /api/test/reset ──────────────────────────────────────── */

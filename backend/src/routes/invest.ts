@@ -10,7 +10,7 @@ import { fundProject } from '../services/wallet';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { SIMULATION_MODE } from '../config/mode';
-import { addSimInvestment, getSimUserInvestments, deductSimBalance, getSimBalance } from '../data/simStore';
+import { addSimInvestment, getSimUserInvestments, deductSimBalance, getSimBalance, DEMO_PROJECTS } from '../data/simStore';
 
 const router = Router();
 
@@ -55,7 +55,18 @@ router.post('/buy', requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'mxn must be at least 100' });
     }
 
-    // 0. Check simulated balance (sim mode only)
+    // 0a. Block funding if the project is still in the Reality Check gate.
+    if (SIMULATION_MODE()) {
+      const project = DEMO_PROJECTS.find((p) => p.id === projectId);
+      if (project && typeof project.status === 'string' && project.status.startsWith('REALITY_CHECK_')) {
+        return res.status(409).json({
+          error: 'Este proyecto aún no completa su Reality Check. No se pueden recibir aportaciones hasta que pase la verificación.',
+          projectStatus: project.status,
+        });
+      }
+    }
+
+    // 0b. Check simulated balance (sim mode only)
     if (SIMULATION_MODE()) {
       const balance = getSimBalance(req.user!.id);
       if (balance < amount) {
