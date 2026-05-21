@@ -17,6 +17,7 @@ import ProposalSubmit from './pages/ProposalSubmit';
 import Feed from './pages/Feed';
 import Register from './pages/Register';
 import CompleteProfile from './pages/CompleteProfile';
+import LegalQueue from './pages/LegalQueue';
 
 const queryClient = new QueryClient();
 const SIM = import.meta.env.VITE_SIMULATION_MODE === 'true';
@@ -98,6 +99,7 @@ function AppInner() {
           <Route path="/providers" element={<Providers />} />
           <Route path="/projects/:projectId/milestones/:milestoneId/propose" element={<ProposalSubmit />} />
           <Route path="/feed" element={<Feed />} />
+          <Route path="/legal-queue" element={<LegalQueue />} />
           <Route path="/auth/callback" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

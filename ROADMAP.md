@@ -25,6 +25,14 @@ Goal: a fully demoable simulation of the end-to-end user journey. No real contra
 
 ## Next: POC Polish (immediate)
 
+- [x] **Reality Check (Phase 1)** — pre-funding budget verification gate
+  - Project lifecycle now goes `DRAFT → REALITY_CHECK_PENDING → {PASS|ADJUST_REQUIRED} → PENDING (open for funding)`
+  - Backend: `backend/src/ai/reality_check.ts`, `backend/src/routes/realityCheck.ts`, simStore extensions, invest-route gate
+  - Frontend: `frontend/src/components/RealityCheckPanel.tsx`, integrated on `ProjectDetail`
+  - Sim test helpers: `POST /api/test/reality-check/{seed-pass,seed-adjust,wipe}` (zero LLM cost)
+  - Production DB schema: `database/migrations/002_reality_check.sql` (not auto-applied)
+  - Toggle via `REALITY_CHECK_ENABLED` env var (defaults true under `SIMULATION_MODE=true`)
+  - Layer 3 (community-expert escalation) deferred — see `janus-ia/dump/espacio-bosques-reality-check-spec.md`
 - [ ] **User profile page** (`/profile`)
   - Name, email, avatar (initials fallback)
   - Investment history (all investments by this user)

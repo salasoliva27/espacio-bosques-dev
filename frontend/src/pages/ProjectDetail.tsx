@@ -10,6 +10,7 @@ import BidModal from '../components/BidModal';
 import MoneyFlowDiagram from '../components/MoneyFlowDiagram';
 import MilestoneCompletion from '../components/MilestoneCompletion';
 import EvidenceReview from '../components/EvidenceReview';
+import RealityCheckPanel from '../components/RealityCheckPanel';
 import { getSession } from '../lib/auth';
 import { Send } from 'lucide-react';
 
@@ -293,6 +294,14 @@ export default function ProjectDetail() {
             {t('project.fund_btn')}
           </button>
         </div>
+
+        {/* Reality Check — pre-funding budget verification gate */}
+        <RealityCheckPanel
+          projectId={project.id}
+          isProposer={isCreator}
+          authToken={token || undefined}
+          onChange={fetchProject}
+        />
 
         {/* Edit panel — shown only to creator */}
         {editMode && (

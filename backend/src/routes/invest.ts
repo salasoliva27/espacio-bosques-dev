@@ -10,7 +10,7 @@ import { fundProject } from '../services/wallet';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { SIMULATION_MODE } from '../config/mode';
-import { addSimInvestment, getSimUserInvestments, deductSimBalance, getSimBalance } from '../data/simStore';
+import { addSimInvestment, getSimUserInvestments, deductSimBalance, getSimBalance, DEMO_PROJECTS } from '../data/simStore';
 
 const router = Router();
 
@@ -55,7 +55,44 @@ router.post('/buy', requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'mxn must be at least 100' });
     }
 
-    // 0. Check simulated balance (sim mode only)
+    // 0a. Block funding while the project is still going through a gate
+    //     (Reality Check or Legal Review). Open-for-funding == PENDING.
+    if (SIMULATION_MODE()) {
+      const project = DEMO_PROJECTS.find((p) => p.id === projectId);
+      if (project && typeof project.status === 'string') {
+        if (project.status.startsWith('REALITY_CHECK_')) {
+          return res.status(409).json({
+            error: 'Este proyecto aún no completa su Reality Check. No se pueden recibir aportaciones hasta que pase la verificación.',
+            projectStatus: project.status,
+          });
+        }
+        if (project.status.startsWith('LEGAL_REVIEW_')) {
+          return res.status(409).json({
+            error: 'Este proyecto está en revisión legal por un abogado verificado. No se pueden recibir aportaciones hasta que firme.',
+            projectStatus: project.status,
+          });
+        }
+        if (project.status === 'DRAFT') {
+          return res.status(409).json({
+            error: 'Este proyecto está en borrador y todavía no ha sido publicado.',
+            projectStatus: project.status,
+          });
+        }
+      }
+    }
+
+    // 0b. Block funding if the user is suspended (3+ active strikes).
+    if (SIMULATION_MODE()) {
+      const { isSuspended } = await import('../data/simStore');
+      if (isSuspended(req.user!.id)) {
+        return res.status(403).json({
+          error: 'Tu cuenta está suspendida por strikes acumulados en validaciones. Completa las validaciones pendientes para recuperar tu lugar.',
+          suspended: true,
+        });
+      }
+    }
+
+    // 0c. Check simulated balance (sim mode only)
     if (SIMULATION_MODE()) {
       const balance = getSimBalance(req.user!.id);
       if (balance < amount) {

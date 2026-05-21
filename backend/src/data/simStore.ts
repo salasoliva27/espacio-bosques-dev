@@ -104,6 +104,31 @@ function loadPersistedData(): void {
         userBalances.set(userId, Number(balance));
       }
     }
+
+    // Restore reality checks (one per projectId, keyed by projectId)
+    if (data.realityChecks && typeof data.realityChecks === 'object') {
+      for (const [projectId, check] of Object.entries(data.realityChecks as Record<string, SimRealityCheck>)) {
+        realityCheckStore.set(projectId, check);
+      }
+    }
+    // Restore legal review records
+    if (data.legalReviews && typeof data.legalReviews === 'object') {
+      for (const [projectId, rev] of Object.entries(data.legalReviews as Record<string, SimLegalReview>)) {
+        legalReviewStore.set(projectId, rev);
+      }
+    }
+    // Restore lawyer credentials
+    if (data.lawyerCredentials && typeof data.lawyerCredentials === 'object') {
+      for (const [userId, cred] of Object.entries(data.lawyerCredentials as Record<string, LawyerCredential>)) {
+        lawyerCredentialStore.set(userId, cred);
+      }
+    }
+    // Restore user strikes
+    if (data.userStrikes && typeof data.userStrikes === 'object') {
+      for (const [userId, arr] of Object.entries(data.userStrikes as Record<string, SimUserStrike[]>)) {
+        strikeStore.set(userId, arr);
+      }
+    }
   } catch {
     // Ignore load errors — start fresh
   }
@@ -125,11 +150,31 @@ export function persistData(): void {
     userBalances.forEach((balance, userId) => {
       balancesObj[userId] = balance;
     });
+    const realityChecksObj: Record<string, SimRealityCheck> = {};
+    realityCheckStore.forEach((check, projectId) => {
+      realityChecksObj[projectId] = check;
+    });
+    const legalReviewsObj: Record<string, SimLegalReview> = {};
+    legalReviewStore.forEach((rev, projectId) => {
+      legalReviewsObj[projectId] = rev;
+    });
+    const lawyersObj: Record<string, LawyerCredential> = {};
+    lawyerCredentialStore.forEach((cred, userId) => {
+      lawyersObj[userId] = cred;
+    });
+    const strikesObj: Record<string, SimUserStrike[]> = {};
+    strikeStore.forEach((arr, userId) => {
+      strikesObj[userId] = arr;
+    });
     fs.writeFileSync(DATA_FILE, JSON.stringify({
       projects: userCreatedProjects,
       comments: commentsObj,
       providerProfiles: providerProfilesObj,
       balances: balancesObj,
+      realityChecks: realityChecksObj,
+      legalReviews: legalReviewsObj,
+      lawyerCredentials: lawyersObj,
+      userStrikes: strikesObj,
     }, null, 2), 'utf8');
   } catch {
     // Ignore write errors
@@ -289,6 +334,12 @@ export interface ProviderService {
   chatMessages: { role: 'user' | 'assistant'; content: string }[];
   finalized: boolean;
   createdAt: string;
+  /** Canonical category key (e.g. `lawyer`, `paving`, `drone_builder`).
+   *  Derived by the AI from the free-text user input — see
+   *  `backend/src/ai/normalize_provider_service.ts`. */
+  category?: string;
+  /** What the user originally wrote when they picked "Otro / escribe tu servicio". */
+  categoryFreeText?: string;
 }
 
 export interface ProviderUserProfile {
@@ -370,6 +421,245 @@ export function getSimStats(): {
     fundedMxn,
     milestones,
   };
+}
+
+// ── Reality Check ─────────────────────────────────────────────────────
+/**
+ * Pre-funding "Reality Check" gate. A project that has been drafted by
+ * the user (with AI assistance) is run through a market-rate sanity check
+ * before it can transition to PENDING / open-for-funding.
+ *
+ * State machine (lives on SimProject.status):
+ *   REALITY_CHECK_PENDING   → Layer 1 (AI market-rate pass) running or queued
+ *   REALITY_CHECK_ADJUST    → Layer 2 — proposer must accept the adjusted
+ *                             number or attach a justification for the delta
+ *   PENDING                 → passed Reality Check, open for funding
+ *   (REALITY_CHECK_EXPERT is reserved for the Layer-3 community-expert
+ *    escalation; not implemented in this PR — deferred to a follow-up.)
+ */
+
+export type RealityCheckState =
+  | 'pending'        // Layer 1 in progress or queued
+  | 'pass'           // passed; project can move to PENDING
+  | 'adjust_required'; // delta exceeds threshold; proposer must act
+
+export type RealityCheckScopeGap =
+  | 'permits'
+  | 'insurance'
+  | 'maintenance'
+  | 'iva_retencion'
+  | 'contingency'
+  | 'other';
+
+export interface RealityCheckItem {
+  id: string;
+  realityCheckId: string;
+  milestoneTitle?: string;
+  lineLabel: string;
+  proposerEstimateMxn: number;
+  benchmarkLowMxn: number | null;
+  benchmarkHighMxn: number | null;
+  benchmarkMidpointMxn: number | null;
+  finalAmountMxn: number;
+  deltaPct: number | null;
+  confidence: number;
+  sources: { url: string; title: string; snippet: string; priceObserved: number | null }[];
+  proposerJustification: string | null;
+  proposerEvidenceUrls: string[];
+  flaggedMissing: boolean;
+  missingCategory: RealityCheckScopeGap | null;
+}
+
+export interface SimRealityCheck {
+  id: string;
+  projectId: string;
+  revision: number;
+  state: RealityCheckState;
+  layer1CompletedAt: string | null;
+  layer1Confidence: number | null;
+  layer1Model: string | null;
+  layer1RawResponse: unknown | null;
+  proposerTotalMxn: number;
+  finalTotalMxn: number;
+  benchmarkTotalLowMxn: number;
+  benchmarkTotalHighMxn: number;
+  items: RealityCheckItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+const realityCheckStore = new Map<string, SimRealityCheck>(); // keyed by projectId — only latest revision
+
+export function getRealityCheck(projectId: string): SimRealityCheck | null {
+  return realityCheckStore.get(projectId) ?? null;
+}
+
+export function putRealityCheck(check: SimRealityCheck): SimRealityCheck {
+  check.updatedAt = new Date().toISOString();
+  realityCheckStore.set(check.projectId, check);
+  persistData();
+  return check;
+}
+
+export function deleteRealityCheck(projectId: string): boolean {
+  const ok = realityCheckStore.delete(projectId);
+  if (ok) persistData();
+  return ok;
+}
+
+export function listRealityChecks(): SimRealityCheck[] {
+  return Array.from(realityCheckStore.values());
+}
+
+// ── Lawyer credentials ────────────────────────────────────────────────
+/**
+ * Per-user lawyer credentials. Only users in this map can pick up legal-queue
+ * cases. Cedula is verified once at onboarding; in sim mode the DGP API call
+ * is stubbed to always succeed.
+ */
+export interface LawyerCredential {
+  userId: string;
+  cedulaProfesional: string;
+  dgpVerifiedAt: string; // ISO
+  specialties: string[]; // e.g. ['administrative', 'civil', 'fintech']
+  availability: 'available' | 'paused' | 'suspended';
+  createdAt: string;
+}
+
+const lawyerCredentialStore = new Map<string, LawyerCredential>();
+
+export function getLawyerCredential(userId: string): LawyerCredential | null {
+  return lawyerCredentialStore.get(userId) ?? null;
+}
+
+export function isLawyer(userId: string): boolean {
+  const cred = lawyerCredentialStore.get(userId);
+  return !!cred && cred.availability !== 'suspended';
+}
+
+export function upsertLawyerCredential(cred: LawyerCredential): LawyerCredential {
+  lawyerCredentialStore.set(cred.userId, cred);
+  persistData();
+  return cred;
+}
+
+export function listLawyers(): LawyerCredential[] {
+  return Array.from(lawyerCredentialStore.values());
+}
+
+// ── Legal review records ─────────────────────────────────────────────
+/**
+ * Tracks the lawyer-review step that sits between Reality Check pass and
+ * public funding. State machine:
+ *   queued        → no lawyer has claimed it yet
+ *   claimed       → a lawyer holds it but hasn't decided
+ *   approved      → project transitions to PENDING (open for funding)
+ *   changes_req   → bounced back to the proposer with notes
+ *   declined      → returned to queue for another lawyer
+ *   timed_out     → 14 days elapsed with no claim — admin escalation
+ */
+export type LegalReviewState =
+  | 'queued'
+  | 'claimed'
+  | 'approved'
+  | 'changes_required'
+  | 'declined'
+  | 'timed_out';
+
+export interface SimLegalReview {
+  id: string;
+  projectId: string;
+  state: LegalReviewState;
+  /** When the project entered the queue. */
+  queuedAt: string;
+  claimedByUserId: string | null;
+  claimedByName: string | null;
+  claimedAt: string | null;
+  decidedAt: string | null;
+  /** Lawyer's notes back to the proposer (only filled on approve/changes_req/decline). */
+  notes: string;
+  /** AI-generated legal checklist seeded at queue time (permits, contracts, etc.). */
+  checklistItems: { label: string; category: string; required: boolean }[];
+  /** Lawyer's responses to each checklist item (matched by label). */
+  checklistResponses: Record<string, { satisfied: boolean; note?: string }>;
+  feeMxn: number;
+  proBono: boolean;
+  cedulaProfesional: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const legalReviewStore = new Map<string, SimLegalReview>(); // keyed by projectId
+
+export function getLegalReview(projectId: string): SimLegalReview | null {
+  return legalReviewStore.get(projectId) ?? null;
+}
+
+export function putLegalReview(rev: SimLegalReview): SimLegalReview {
+  rev.updatedAt = new Date().toISOString();
+  legalReviewStore.set(rev.projectId, rev);
+  persistData();
+  return rev;
+}
+
+export function listLegalReviewQueue(): SimLegalReview[] {
+  return Array.from(legalReviewStore.values()).filter(r => r.state === 'queued' || r.state === 'declined');
+}
+
+export function activeLegalReviewsForLawyer(userId: string): SimLegalReview[] {
+  return Array.from(legalReviewStore.values()).filter(
+    r => r.claimedByUserId === userId && (r.state === 'claimed')
+  );
+}
+
+// ── User strikes ──────────────────────────────────────────────────────
+/**
+ * Strikes accumulate when a sorted validator declines late or lets the 72 h
+ * window expire. At 3 active strikes, the user loses the ability to create
+ * projects / fund / register as provider until they validate enough cases to
+ * clear strikes. Strikes auto-decay after 6 months.
+ */
+export interface SimUserStrike {
+  id: string;
+  userId: string;
+  reason: 'declined_late' | 'expired' | 'dishonesty';
+  issuedAt: string;
+  expiresAt: string; // 6 months out — auto-decay
+  clearedAt: string | null; // when user worked it off via a completed validation
+  contextProjectId: string | null;
+}
+
+const strikeStore = new Map<string, SimUserStrike[]>(); // keyed by userId
+
+export function getActiveStrikes(userId: string): SimUserStrike[] {
+  const all = strikeStore.get(userId) ?? [];
+  const now = Date.now();
+  return all.filter(s => !s.clearedAt && new Date(s.expiresAt).getTime() > now);
+}
+
+export function isSuspended(userId: string): boolean {
+  return getActiveStrikes(userId).length >= 3;
+}
+
+export function addStrike(strike: SimUserStrike): void {
+  const existing = strikeStore.get(strike.userId) ?? [];
+  existing.push(strike);
+  strikeStore.set(strike.userId, existing);
+  persistData();
+}
+
+export function clearOldestStrike(userId: string): SimUserStrike | null {
+  const strikes = getActiveStrikes(userId);
+  if (strikes.length === 0) return null;
+  // Clear the oldest one
+  const oldest = strikes.sort((a, b) => a.issuedAt.localeCompare(b.issuedAt))[0];
+  oldest.clearedAt = new Date().toISOString();
+  persistData();
+  return oldest;
+}
+
+export function listUserStrikes(userId: string): SimUserStrike[] {
+  return [...(strikeStore.get(userId) ?? [])];
 }
 
 // ── Init ──────────────────────────────────────────────────────────────

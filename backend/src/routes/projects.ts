@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../index";
 import { logger } from "../utils/logger";
-import { SIMULATION_MODE } from "../config/mode";
+import { SIMULATION_MODE, REALITY_CHECK_ENABLED } from "../config/mode";
 import { DEMO_PROJECTS, persistData, addSimProject } from "../data/simStore";
 import { createNotification, SIM_NOTIFICATIONS } from "../data/governance";
 import { SIM_PROVIDERS } from "../data/providers";
@@ -143,6 +143,17 @@ router.post("/", async (req: Request, res: Response) => {
     serviceSlots,
   } = req.body;
 
+  // Block project creation if the user is suspended (3+ active strikes).
+  if (SIMULATION_MODE() && plannerId) {
+    const { isSuspended } = await import('../data/simStore');
+    if (isSuspended(plannerId)) {
+      return res.status(403).json({
+        error: 'Tu cuenta está suspendida por strikes acumulados en validaciones. Completa las validaciones pendientes para recuperar tu lugar.',
+        suspended: true,
+      });
+    }
+  }
+
   // Simulation mode — skip DB entirely, return mock project
   if (SIMULATION_MODE()) {
     const ts = Date.now();
@@ -164,12 +175,17 @@ router.post("/", async (req: Request, res: Response) => {
         milestoneId: linked?.id ?? null,
       };
     });
+    // When Reality Check is enabled, a freshly created project sits in
+    // REALITY_CHECK_PENDING and CANNOT take investments until the
+    // /api/reality-check/:projectId/run pass completes (transitioning the
+    // project to PENDING or REALITY_CHECK_ADJUST). See realityCheck.ts.
+    const initialStatus = REALITY_CHECK_ENABLED() ? "REALITY_CHECK_PENDING" : "PENDING";
     const mockProject = {
       id: `sim-${ts}`,
       title,
       summary,
       category: category || "community",
-      status: "PENDING",
+      status: initialStatus,
       fundingGoal: fundingGoal || "10000000000000000000000",
       fundingRaised: "0",
       createdAt: new Date(),

@@ -330,7 +330,8 @@ export function resolveCompletionVoting(requestId: string, eligibleVoterCount: n
 // ── Notifications ─────────────────────────────────────────────────────────────
 
 export type NotificationType = 'JOB_MATCH' | 'PROJECT_UPDATE' | 'EVIDENCE_REVIEW' |
-  'VOTE_RESULT' | 'MILESTONE_APPROVED' | 'MILESTONE_REJECTED' | 'COMPLETION_SUBMITTED' | 'NEW_INVESTMENT';
+  'VOTE_RESULT' | 'MILESTONE_APPROVED' | 'MILESTONE_REJECTED' | 'COMPLETION_SUBMITTED' | 'NEW_INVESTMENT' |
+  'REALITY_CHECK_PASSED' | 'REALITY_CHECK_REQUIRES_ADJUSTMENT';
 
 export interface SimNotification {
   id: string;

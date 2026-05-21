@@ -27,6 +27,8 @@ import profileRoutes from "./routes/profile";
 import statsRoutes from "./routes/stats";
 import rfcRoutes from "./routes/rfc";
 import userProfileRoutes from "./routes/userProfile";
+import realityCheckRoutes from "./routes/realityCheck";
+import legalReviewRoutes from "./routes/legalReview";
 import { warmBlacklist } from "./services/satBlacklist";
 
 // Initialize environment
@@ -87,6 +89,8 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/rfc", rfcRoutes);
 app.use("/api/user/profile", userProfileRoutes);
+app.use("/api/reality-check", realityCheckRoutes);
+app.use("/api/legal-review", legalReviewRoutes);
 
 // Test harness — simulation mode only
 import { SIMULATION_MODE } from "./config/mode";
