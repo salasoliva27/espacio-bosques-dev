@@ -108,6 +108,23 @@
       "expertQuorum": 2,
       "expertPanelSize": 3,
       "scopeGapCategories": ["permits", "insurance", "maintenance", "iva_retencion", "contingency"]
+    },
+    "legal": {
+      "enabled": true,
+      "lawyerActiveProjectCap": 3,
+      "claimFeeBaseMxn": 1500,
+      "claimFeeLargeMxn": 3000,
+      "largeProjectThresholdMxn": 100000,
+      "claimWindowDays": 7,
+      "queueFallbackDays": 14
+    },
+    "participationCaps": {
+      "proposerActiveProjects": 2,
+      "providerActiveContracts": 3
+    },
+    "strikes": {
+      "suspensionThreshold": 3,
+      "strikeTtlDays": 180
     }
   },
   "ipfs": {

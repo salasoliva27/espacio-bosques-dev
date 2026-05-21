@@ -327,6 +327,48 @@ router.patch('/provider/services/:serviceId', requireAuth, (req: AuthRequest, re
   res.json({ service });
 });
 
+// ── POST /api/profile/provider/services/:serviceId/categorize ────────
+// Accepts either:
+//   { category: "lawyer" }                      (chosen from dropdown)
+//   { categoryFreeText: "constructor de drones" } (the "Otro" path; AI normalizes)
+// Sets `category` and `categoryFreeText` on the service.
+router.post('/provider/services/:serviceId/categorize', requireAuth, async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+  const { serviceId } = req.params;
+  const { category, categoryFreeText } = req.body as { category?: string; categoryFreeText?: string };
+
+  let finalCategory: string | undefined;
+  let displayLabel: string | undefined;
+  let isKnown = false;
+
+  if (category && typeof category === 'string') {
+    // Dropdown path — trust the canonical key the frontend sent.
+    const { KNOWN_CATEGORIES } = await import('../ai/normalize_provider_service');
+    finalCategory = category.trim();
+    isKnown = (KNOWN_CATEGORIES as readonly string[]).includes(finalCategory);
+  } else if (categoryFreeText && typeof categoryFreeText === 'string') {
+    // "Otro" path — ask the AI to normalize.
+    const { normalizeProviderService } = await import('../ai/normalize_provider_service');
+    const result = await normalizeProviderService(categoryFreeText);
+    finalCategory = result.category;
+    displayLabel = result.displayLabel;
+    isKnown = result.isKnown;
+    logger.info('[profile] normalized free-text service', {
+      userId, serviceId, freeText: categoryFreeText.slice(0, 60), category: finalCategory, source: result.source,
+    });
+  } else {
+    return res.status(400).json({ error: 'Either `category` (dropdown) or `categoryFreeText` (free-text) is required.' });
+  }
+
+  const service = updateProviderService(userId, serviceId, {
+    category: finalCategory,
+    categoryFreeText: categoryFreeText || undefined,
+  });
+  if (!service) return res.status(404).json({ error: 'Service not found' });
+
+  res.json({ service, normalized: { category: finalCategory, displayLabel, isKnown } });
+});
+
 // ── DELETE /api/profile/provider/services/:serviceId ─────────────────
 
 router.delete('/provider/services/:serviceId', requireAuth, (req: AuthRequest, res: Response) => {

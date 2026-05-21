@@ -497,8 +497,20 @@ router.post('/reality-check/seed-pass', (req: Request, res: Response) => {
     updatedAt: new Date().toISOString(),
   };
   putRealityCheck(check);
-  project.status = 'PENDING';
-  res.json({ ok: true, check, projectStatus: project.status });
+
+  // Route through the same exit as the real /run endpoint so legal review
+  // gets queued when enabled.
+  (async () => {
+    const projectConfig = (await import('../../../config/project-config.json')).default as any;
+    if (projectConfig.ai?.legal?.enabled !== false) {
+      const { queueLegalReviewForProject } = await import('./legalReview');
+      queueLegalReviewForProject(project);
+      project.status = 'LEGAL_REVIEW_PENDING';
+    } else {
+      project.status = 'PENDING';
+    }
+    res.json({ ok: true, check, projectStatus: project.status });
+  })();
 });
 
 /* ── POST /api/test/reality-check/seed-adjust ──────────────────── */
@@ -557,6 +569,109 @@ router.post('/reality-check/wipe', (req: Request, res: Response) => {
     return res.json({ ok: true, wiped: projectId });
   }
   res.json({ ok: false, error: `No check stored for ${projectId}` });
+});
+
+/* ── GET /api/test/legal ───────────────────────────────────────── */
+router.get('/legal', async (_req: Request, res: Response) => {
+  const { listLegalReviewQueue, listLawyers, listUserStrikes } = await import('../data/simStore');
+  res.json({
+    note: 'Legal + strike test helpers — simulation mode only',
+    queue: listLegalReviewQueue(),
+    lawyers: listLawyers(),
+    endpoints: [
+      'POST /api/test/legal/seed-lawyer    {userId, cedulaProfesional?, specialties?}  promote a user to lawyer',
+      'POST /api/test/legal/seed-queued    {projectId}    push a project into the legal queue',
+      'POST /api/test/legal/force-approve  {projectId, lawyerUserId}  skip review and approve',
+      'POST /api/test/strikes/add          {userId, n?=1}  add N active strikes',
+      'POST /api/test/strikes/clear        {userId}        clear ALL active strikes',
+    ],
+  });
+});
+
+/* ── POST /api/test/legal/seed-lawyer ──────────────────────────── */
+router.post('/legal/seed-lawyer', async (req: Request, res: Response) => {
+  const userId = (req.body?.userId as string) ?? 'sim-user';
+  const cedula = (req.body?.cedulaProfesional as string) ?? String(Math.floor(1000000 + Math.random() * 9000000));
+  const specialties = Array.isArray(req.body?.specialties) ? req.body.specialties : ['administrative', 'civil'];
+
+  const { upsertLawyerCredential } = await import('../data/simStore');
+  const cred = upsertLawyerCredential({
+    userId,
+    cedulaProfesional: cedula,
+    dgpVerifiedAt: new Date().toISOString(),
+    specialties,
+    availability: 'available',
+    createdAt: new Date().toISOString(),
+  });
+  res.json({ ok: true, credential: cred });
+});
+
+/* ── POST /api/test/legal/seed-queued ──────────────────────────── */
+router.post('/legal/seed-queued', async (req: Request, res: Response) => {
+  const projectId: string = req.body?.projectId ?? DEMO_PROJECTS[0]?.id;
+  const project = DEMO_PROJECTS.find(p => p.id === projectId);
+  if (!project) return res.status(404).json({ error: `Project not found: ${projectId}` });
+
+  const { queueLegalReviewForProject } = await import('./legalReview');
+  const rev = queueLegalReviewForProject(project);
+  project.status = 'LEGAL_REVIEW_PENDING';
+  res.json({ ok: true, legalReview: rev, projectStatus: project.status });
+});
+
+/* ── POST /api/test/legal/force-approve ────────────────────────── */
+router.post('/legal/force-approve', async (req: Request, res: Response) => {
+  const projectId: string = req.body?.projectId ?? DEMO_PROJECTS[0]?.id;
+  const lawyerUserId: string = req.body?.lawyerUserId ?? 'sim-lawyer';
+  const project = DEMO_PROJECTS.find(p => p.id === projectId);
+  if (!project) return res.status(404).json({ error: `Project not found: ${projectId}` });
+
+  const { getLegalReview, putLegalReview, getLawyerCredential, queueLegalReviewForProject } = await import('../data/simStore').then(async m => {
+    const lr = await import('./legalReview');
+    return { ...m, queueLegalReviewForProject: lr.queueLegalReviewForProject };
+  });
+  let rev = getLegalReview(projectId);
+  if (!rev) rev = queueLegalReviewForProject(project);
+  const cred = getLawyerCredential(lawyerUserId);
+  rev.state = 'approved';
+  rev.claimedByUserId = lawyerUserId;
+  rev.claimedByName = lawyerUserId;
+  rev.claimedAt = new Date().toISOString();
+  rev.decidedAt = new Date().toISOString();
+  rev.cedulaProfesional = cred?.cedulaProfesional ?? '0000000';
+  rev.notes = 'Approved via test harness';
+  for (const item of rev.checklistItems) rev.checklistResponses[item.label] = { satisfied: true };
+  putLegalReview(rev);
+  project.status = 'PENDING';
+  (project as any).legalLead = { userId: lawyerUserId, name: lawyerUserId, cedula: rev.cedulaProfesional, proBono: false };
+  res.json({ ok: true, legalReview: rev, projectStatus: project.status });
+});
+
+/* ── POST /api/test/strikes/add ────────────────────────────────── */
+router.post('/strikes/add', async (req: Request, res: Response) => {
+  const userId: string = req.body?.userId ?? 'sim-user';
+  const n: number = Math.max(1, parseInt(req.body?.n ?? 1));
+  const { addStrike, getActiveStrikes, isSuspended } = await import('../data/simStore');
+  for (let i = 0; i < n; i++) {
+    addStrike({
+      id: `strike-test-${Date.now()}-${i}`,
+      userId,
+      reason: 'expired',
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+      clearedAt: null,
+      contextProjectId: null,
+    });
+  }
+  res.json({ ok: true, userId, activeStrikes: getActiveStrikes(userId).length, suspended: isSuspended(userId) });
+});
+
+/* ── POST /api/test/strikes/clear ──────────────────────────────── */
+router.post('/strikes/clear', async (req: Request, res: Response) => {
+  const userId: string = req.body?.userId ?? 'sim-user';
+  const { listUserStrikes, clearOldestStrike } = await import('../data/simStore');
+  let cleared = 0;
+  while (clearOldestStrike(userId)) cleared++;
+  res.json({ ok: true, userId, cleared, remaining: listUserStrikes(userId).filter(s => !s.clearedAt).length });
 });
 
 /* ── POST /api/test/reset ──────────────────────────────────────── */

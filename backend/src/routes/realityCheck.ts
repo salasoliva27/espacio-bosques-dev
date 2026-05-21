@@ -29,9 +29,27 @@ import {
 } from "../data/simStore";
 import { createNotification } from "../data/governance";
 import { runRealityCheck, computeDelta, aggregateOutcome } from "../ai/reality_check";
+import { queueLegalReviewForProject } from "./legalReview";
 import projectConfig from "../../../config/project-config.json";
 
 const router = Router();
+
+/**
+ * Where the project goes after Reality Check passes. If legal review is
+ * enabled (default), the project moves to LEGAL_REVIEW_PENDING and a legal
+ * review record is queued for lawyers. Otherwise it goes straight to
+ * PENDING (open for funding).
+ */
+function exitRealityCheckPass(project: any): { status: string; nextStep: string } {
+  const legalEnabled = (projectConfig as any).ai?.legal?.enabled !== false;
+  if (legalEnabled) {
+    queueLegalReviewForProject(project);
+    project.status = "LEGAL_REVIEW_PENDING";
+    return { status: "LEGAL_REVIEW_PENDING", nextStep: "legal_review" };
+  }
+  project.status = "PENDING";
+  return { status: "PENDING", nextStep: "open_for_funding" };
+}
 
 function newId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -177,14 +195,16 @@ router.post("/:projectId/run", requireAuth, async (req: AuthRequest, res: Respon
 
     // Update project status.
     if (outcome.state === "pass") {
-      project.status = "PENDING";
+      const exit = exitRealityCheckPass(project);
       project.updatedAt = new Date();
       persistData();
       createNotification({
         userId: project.planner.id,
         type: "REALITY_CHECK_PASSED" as any,
         title: "Reality Check aprobado",
-        body: `Tu proyecto "${project.title}" ya está abierto a financiamiento.`,
+        body: exit.nextStep === "legal_review"
+          ? `Tu proyecto "${project.title}" pasa ahora a revisión legal por un abogado verificado.`
+          : `Tu proyecto "${project.title}" ya está abierto a financiamiento.`,
         projectId: project.id,
       });
     } else {
@@ -233,14 +253,16 @@ router.post("/:projectId/accept-adjustment", requireAuth, async (req: AuthReques
     .reduce((s, i) => s + i.finalAmountMxn, 0);
   putRealityCheck(check);
 
-  project.status = "PENDING";
+  const exit = exitRealityCheckPass(project);
   project.updatedAt = new Date();
   persistData();
   createNotification({
     userId: project.planner.id,
     type: "REALITY_CHECK_PASSED" as any,
     title: "Reality Check aprobado",
-    body: `Aceptaste el ajuste de mercado. "${project.title}" está abierto a financiamiento.`,
+    body: exit.nextStep === "legal_review"
+      ? `Aceptaste el ajuste de mercado. "${project.title}" pasa ahora a revisión legal.`
+      : `Aceptaste el ajuste de mercado. "${project.title}" está abierto a financiamiento.`,
     projectId: project.id,
   });
 
@@ -309,14 +331,16 @@ router.post("/:projectId/justify", requireAuth, async (req: AuthRequest, res: Re
     .reduce((s, i) => s + i.finalAmountMxn, 0);
   putRealityCheck(check);
 
-  project.status = "PENDING";
+  const exit2 = exitRealityCheckPass(project);
   project.updatedAt = new Date();
   persistData();
   createNotification({
     userId: project.planner.id,
     type: "REALITY_CHECK_PASSED" as any,
     title: "Reality Check aprobado",
-    body: `Tus justificaciones fueron registradas. "${project.title}" está abierto a financiamiento.`,
+    body: exit2.nextStep === "legal_review"
+      ? `Tus justificaciones fueron registradas. "${project.title}" pasa ahora a revisión legal.`
+      : `Tus justificaciones fueron registradas. "${project.title}" está abierto a financiamiento.`,
     projectId: project.id,
   });
 

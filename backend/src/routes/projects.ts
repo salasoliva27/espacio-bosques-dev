@@ -143,6 +143,17 @@ router.post("/", async (req: Request, res: Response) => {
     serviceSlots,
   } = req.body;
 
+  // Block project creation if the user is suspended (3+ active strikes).
+  if (SIMULATION_MODE() && plannerId) {
+    const { isSuspended } = await import('../data/simStore');
+    if (isSuspended(plannerId)) {
+      return res.status(403).json({
+        error: 'Tu cuenta está suspendida por strikes acumulados en validaciones. Completa las validaciones pendientes para recuperar tu lugar.',
+        suspended: true,
+      });
+    }
+  }
+
   // Simulation mode — skip DB entirely, return mock project
   if (SIMULATION_MODE()) {
     const ts = Date.now();
