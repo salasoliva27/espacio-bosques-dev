@@ -138,9 +138,6 @@ export default function InvestModal({ projectId, projectTitle, onClose }: Invest
 
         {step === 'quote' && quote && (
           <div className="space-y-4">
-            {quote.simulation && (
-              <div className="text-xs py-1.5 px-3 rounded-lg text-center" style={{ background: '#1a1200', color: '#f59e0b' }}>{t('invest.sim_quote')}</div>
-            )}
             <div className="space-y-2 py-3 px-4 rounded-xl" style={{ background: '#080c10' }}>
               <div className="flex justify-between text-sm">
                 <span style={{ color: '#9ca3af' }}>{t('invest.you_invest')}</span>
@@ -175,9 +172,6 @@ export default function InvestModal({ projectId, projectTitle, onClose }: Invest
               <p className="font-semibold mb-1" style={{ color: '#e8f4f0' }}>{result.message}</p>
               <p className="text-sm" style={{ color: '#6b7280' }}>${result.mxn.toLocaleString('es-MX')} MXN → {result.eth.toFixed(6)} ETH</p>
             </div>
-            {result.simulation && (
-              <div className="text-xs py-1.5 px-3 rounded-lg" style={{ background: '#1a1200', color: '#f59e0b' }}>{t('invest.sim_tx')}</div>
-            )}
             {balance !== null && (
               <div className="flex items-center justify-between text-xs px-3 py-2 rounded-lg" style={{ background: '#080c10', border: '1px solid #1e2d3d' }}>
                 <span style={{ color: '#6b7280' }}>{t('invest.balance_remaining')}</span>

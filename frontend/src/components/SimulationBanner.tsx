@@ -1,15 +1,10 @@
-import { useT } from '../context/LanguageContext';
-
+// Visible "simulation" banner removed — we are entering real trials with the
+// banquetas POC in Bosques. Backend SIMULATION_MODE still gates real money
+// movement until each safety check is signed off, but the user-facing UI no
+// longer advertises a sandbox state.
+//
+// To re-enable a maintenance/test banner in the future, restore the prior
+// implementation and set VITE_SIMULATION_MODE=true at build time.
 export default function SimulationBanner() {
-  const t = useT();
-  if (import.meta.env.VITE_SIMULATION_MODE !== 'true') return null;
-
-  return (
-    <div
-      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center py-1 text-xs font-semibold tracking-wide"
-      style={{ background: '#f59e0b', color: '#1a1a1a', height: '28px' }}
-    >
-      {t('sim.banner')}
-    </div>
-  );
+  return null;
 }

@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase } from './lib/auth';
 import { LanguageProvider } from './context/LanguageContext';
-import SimulationBanner from './components/SimulationBanner';
 import AuthScreen from './components/AuthScreen';
 import Navbar from './components/Navbar';
 import Landing from './pages/Landing';
@@ -20,8 +19,6 @@ import CompleteProfile from './pages/CompleteProfile';
 import LegalQueue from './pages/LegalQueue';
 
 const queryClient = new QueryClient();
-const SIM = import.meta.env.VITE_SIMULATION_MODE === 'true';
-
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 /** Fire-and-forget: sync user_metadata → eb_profiles after login. */
@@ -112,10 +109,7 @@ export default function App() {
   return (
     <LanguageProvider>
       <Router>
-        <SimulationBanner />
-        <div style={{ paddingTop: SIM ? '28px' : '0' }}>
-          <AppInner />
-        </div>
+        <AppInner />
       </Router>
     </LanguageProvider>
   );
