@@ -1,6 +1,6 @@
 ---
-lastSyncedAt: "2026-06-24T05:32:03.079Z"
-lastSyncedCommit: "0c9bffe"
+lastSyncedAt: "2026-06-24T05:32:08.243Z"
+lastSyncedCommit: "6291363"
 lastSyncedCommitMessage: "chore(janus): sync .janus/status.md from wiki/espacio-bosques.md"
 ---
 
