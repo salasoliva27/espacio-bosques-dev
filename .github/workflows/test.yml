@@ -1,27 +1,38 @@
 name: Tests
 
+# Manual-only since 2026-07-26. This workflow failed on EVERY push (bad
+# workspace names + husky postinstall), and each failure emailed. The bugs
+# below are fixed, but the suite has never been confirmed green in CI, so the
+# push trigger stays off until a manual run passes.
+#
+# To re-enable: run this workflow from the Actions tab ("Run workflow"). Once
+# it is green, uncomment the push/pull_request block below.
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+  workflow_dispatch:
+  # push:
+  #   branches: [main, develop]
+  # pull_request:
+  #   branches: [main, develop]
 
 jobs:
   contracts:
     name: Contract Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'yarn'
+      # --ignore-scripts: the root postinstall runs `husky install`, which has
+      # nothing to install against on a fresh CI checkout and fails the job.
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
+      # Workspace is `contracts` in package.json — not @espacio-bosques/contracts.
       - name: Run contract tests
-        run: yarn workspace @espacio-bosques/contracts test
+        run: yarn workspace contracts test
       - name: Generate coverage
-        run: yarn workspace @espacio-bosques/contracts coverage
+        run: yarn workspace contracts coverage
 
   backend:
     name: Backend Tests
@@ -40,15 +51,15 @@ jobs:
         ports:
           - 5432:5432
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'yarn'
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
       - name: Run backend tests
-        run: yarn workspace @espacio-bosques/backend test
+        run: yarn workspace backend test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
 
@@ -56,12 +67,12 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'yarn'
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
       - name: Run linter
         run: yarn lint
