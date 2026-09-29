@@ -17,8 +17,8 @@
 set -euo pipefail
 
 BACKEND="http://localhost:3001"
-SUPABASE_URL="https://rycybujjedtofghigyxm.supabase.co"
-ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ5Y3lidWpqZWR0b2ZnaGlneXhtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg3Mzk5MiwiZXhwIjoyMDg5NDQ5OTkyfQ.XJ65vlBcHijtVPJS81Bv4_qg61TpkvrwtpbhXOyAako"
+SUPABASE_URL="${SUPABASE_URL:?Set SUPABASE_URL in your environment or .env before running this script}"
+ANON_KEY="${SUPABASE_ANON_KEY:?Set SUPABASE_ANON_KEY in your environment or .env before running this script}"
 DEMO_EMAIL="jano@bosques.mx"
 DEMO_PASS="Test1234!"
 PROJECT_ID="demo-project-001"
