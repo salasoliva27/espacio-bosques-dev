@@ -1,6 +1,6 @@
 ---
-lastSyncedAt: "2026-10-23T09:49:59.118Z"
-lastSyncedCommit: "e4b0cfb"
+lastSyncedAt: "2026-10-23T09:59:59.243Z"
+lastSyncedCommit: "bb6fe38"
 lastSyncedCommitMessage: "Merge origin/main (plumbing — no pull into the shared tree)"
 ---
 
